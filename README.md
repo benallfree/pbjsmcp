@@ -1,15 +1,21 @@
 # pbjsmcp
 
-A [Model Context Protocol](https://modelcontextprotocol.io) server that runs **inside PocketBase**, in `pb_hooks`. No sidecar process, no superuser password in an agent's config, and the tools are your app's features rather than raw table access.
+A [Model Context Protocol](https://modelcontextprotocol.io) server that runs **inside PocketBase**, in `pb_hooks`. No sidecar process and no superuser password in an agent's config. It ships with tools for managing PocketBase itself, and you add tools for your app's own features next to them.
 
-- One file, no dependencies: [`mcp.js`](mcp.js)
+- No dependencies: [`mcp.js`](mcp.js) (the protocol) and [`pocketbase-tools.js`](pocketbase-tools.js) (built-in tools)
 - MCP **Streamable HTTP** transport, stateless: each POST carries one JSON-RPC message and gets plain JSON back
 - Auth is ordinary PocketBase route middleware
 - Tools only (no resources, prompts or server-initiated messages yet)
 
 ## Quick start
 
-Copy `mcp.js` into your `pb_hooks/`, then add a route:
+Install it, either as a dependency:
+
+```bash
+npm i github:benallfree/pbjsmcp
+```
+
+or by copying `index.js`, `mcp.js` and `pocketbase-tools.js` into `pb_hooks/pbjsmcp/`. Then add a route:
 
 ```js
 // pb_hooks/mcp.pb.js
@@ -17,11 +23,12 @@ routerAdd(
   'POST',
   '/mcp',
   (e) => {
-    const { createMcpServer } = require(`${__hooks}/mcp.js`)
+    const { createMcpServer, pocketbaseTools } = require('pbjsmcp') // or `${__hooks}/pbjsmcp/index.js`
     return createMcpServer({
       name: 'my-app',
       version: '1.0.0',
       tools: [
+        ...pocketbaseTools(),
         {
           name: 'count_posts',
           description: 'Count published posts.',
@@ -41,7 +48,35 @@ routerAdd('GET', '/mcp', (e) => e.json(405, { message: 'Use POST' }))
 
 See [`example/`](example) for a runnable app.
 
-## Tools
+## Built-in PocketBase tools
+
+`pocketbaseTools()` returns these. They call `$app` directly, so they bypass collection API rules; every one of them requires a **superuser**, whatever the route allows.
+
+| Group | Tools |
+|---|---|
+| `info` | `pb_server_info` |
+| `collections` | `pb_list_collections`, `pb_get_collection`, `pb_create_collection`, `pb_update_collection`, `pb_delete_collection`, `pb_import_collections` |
+| `records` | `pb_list_records` (filter, params, sort, paging, expand), `pb_get_record`, `pb_create_record`, `pb_update_record`, `pb_delete_record` |
+| `settings` | `pb_get_settings`, `pb_update_settings` |
+| `logs` | `pb_list_logs` |
+| `backups` | `pb_list_backups`, `pb_create_backup` |
+
+Pick a subset, or only the read-only ones:
+
+```js
+pocketbaseTools({ groups: ['collections', 'records'] })
+pocketbaseTools({ readOnly: true })
+```
+
+Safety:
+
+- Every tool carries MCP annotations (`readOnlyHint`, `destructiveHint`), so clients can ask before running destructive ones.
+- `pb_delete_collection` needs `confirm` set to the collection name.
+- `pb_import_collections` never deletes collections that aren't in the list.
+- Records come back without hidden fields (passwords, token keys). PocketBase leaves SMTP and S3 secrets out of settings.
+- Restoring backups and file uploads are not exposed.
+
+## Your own tools
 
 ```js
 {
@@ -55,6 +90,7 @@ See [`example/`](example) for a runnable app.
 - `args`: the tool arguments
 - `auth`: the authenticated record (`e.auth`)
 - `e`: the PocketBase request event
+- Give tools that change data `annotations: { readOnlyHint: false, destructiveHint: true }` when they delete or overwrite.
 - Return any JSON-able value. It's sent as text content, and also as `structuredContent` when it's a plain object.
 - Throw to return a tool error (`isError: true`) the model can read and recover from.
 

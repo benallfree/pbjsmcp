@@ -62,11 +62,15 @@ const createMcpServer = ({ name, version, instructions, tools }) => {
         return rpcResult(id, {})
       case 'tools/list':
         return rpcResult(id, {
-          tools: (tools || []).map((t) => ({
-            name: t.name,
-            description: t.description,
-            inputSchema: t.inputSchema || { type: 'object', properties: {} },
-          })),
+          tools: (tools || []).map((t) => {
+            const def = {
+              name: t.name,
+              description: t.description,
+              inputSchema: t.inputSchema || { type: 'object', properties: {} },
+            }
+            if (t.annotations) def.annotations = t.annotations
+            return def
+          }),
         })
       case 'tools/call': {
         const tool = byName[params.name]

@@ -1,41 +1,25 @@
 /// <reference path="../pb_data/types.d.ts" />
 
-// POST /mcp: superuser-only MCP endpoint with two example tools.
+// POST /mcp: superuser-only MCP endpoint with the built-in PocketBase tools
+// plus one app-specific example tool.
 routerAdd(
   'POST',
   '/mcp',
   (e) => {
-    const { createMcpServer } = require(`${__hooks}/../../mcp.js`) // in your app: `${__hooks}/mcp.js`
+    // In your app: require('pbjsmcp') or require(`${__hooks}/pbjsmcp/index.js`)
+    const { createMcpServer, pocketbaseTools } = require(`${__hooks}/../../index.js`)
 
     return createMcpServer({
       name: 'pbjsmcp-example',
       version: '0.0.1',
-      instructions: 'Example PocketBase MCP server. Use list_collections to explore the schema.',
+      instructions: 'Example PocketBase MCP server. Start with pb_server_info and pb_list_collections.',
       tools: [
+        ...pocketbaseTools(),
         {
-          name: 'whoami',
-          description: 'Show which auth record this MCP connection is using.',
-          inputSchema: { type: 'object', properties: {} },
-          handler: ({ auth }) => ({
-            id: auth.id,
-            collection: auth.collection().name,
-            email: auth.email(),
-          }),
-        },
-        {
-          name: 'list_collections',
-          description: 'List collections with their type and field names.',
-          inputSchema: {
-            type: 'object',
-            properties: { includeSystem: { type: 'boolean', default: false } },
-          },
-          handler: ({ args }) => {
-            const collections = $app
-              .findAllCollections()
-              .filter((c) => args.includeSystem || !c.system)
-              .map((c) => ({ name: c.name, type: c.type, fields: c.fields.map((f) => f.getName()) }))
-            return { collections }
-          },
+          name: 'hello',
+          description: 'An app-specific tool: greets someone.',
+          inputSchema: { type: 'object', properties: { name: { type: 'string' } }, required: ['name'] },
+          handler: ({ args }) => `Hello, ${args.name}!`,
         },
       ],
     }).handle(e)
